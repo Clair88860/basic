@@ -11,30 +11,27 @@ jobs:
 
     container:
       image: kivy/buildozer:latest
+      options: --user 1001
 
     steps:
-      # 1. Code holen
       - name: Code auschecken
         uses: actions/checkout@v4
 
-      # 2. 🔥 Cache für Buildozer & Gradle
       - name: Cache Buildozer & Gradle
         id: cache
         uses: actions/cache@v3
         with:
           path: |
-            /github/home/.buildozer
-            /github/home/.gradle
+            /home/user/.buildozer
+            /home/user/.gradle
           key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
             ${{ runner.os }}-buildozer-
 
-      # 3. APK bauen (KEIN clean!)
       - name: Build APK
         run: |
           buildozer android debug
 
-      # 4. APK hochladen
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
