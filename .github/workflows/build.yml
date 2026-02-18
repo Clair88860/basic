@@ -1,0 +1,42 @@
+name: Build Kivy APK Schnell (Docker)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    container:
+      image: kivy/buildozer:latest
+
+    steps:
+      # 1. Code holen
+      - name: Code auschecken
+        uses: actions/checkout@v4
+
+      # 2. 🔥 Cache für Buildozer & Gradle
+      - name: Cache Buildozer & Gradle
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            /github/home/.buildozer
+            /github/home/.gradle
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
+
+      # 3. APK bauen (KEIN clean!)
+      - name: Build APK
+        run: |
+          buildozer android debug
+
+      # 4. APK hochladen
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kivy-App-APK
+          path: bin/*.apk
