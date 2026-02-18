@@ -6,6 +6,8 @@ source.include_exts = py,png,jpg,kv,txt
 version = 0.1
 requirements = python3,kivy,pyjnius
 orientation = portrait
+source.dir = .
+
 android.permissions = BLUETOOTH,BLUETOOTH_ADMIN,ACCESS_FINE_LOCATION,BLUETOOTH_CONNECT,BLUETOOTH_SCAN
 android.api = 33
 android.minapi = 31
