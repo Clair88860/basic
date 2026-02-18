@@ -1,8 +1,8 @@
 [app]
 
 # Name der App
-title = Archäologie
-package.name = archaeologie
+title = Basics
+package.name = basics
 package.domain = org.example
 
 # Quellcode
