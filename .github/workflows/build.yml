@@ -1,4 +1,4 @@
-name: Build Kivy APK Schnell (Docker)
+name: Build Kivy APK Schnell (Docker Stabil)
 
 on:
   push:
@@ -11,19 +11,20 @@ jobs:
 
     container:
       image: kivy/buildozer:latest
-      options: --user 1001
+
+    env:
+      BUILDOZER_ALLOW_ROOT: 1
 
     steps:
       - name: Code auschecken
         uses: actions/checkout@v4
 
       - name: Cache Buildozer & Gradle
-        id: cache
         uses: actions/cache@v3
         with:
           path: |
-            /home/user/.buildozer
-            /home/user/.gradle
+            /github/home/.buildozer
+            /github/home/.gradle
           key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
             ${{ runner.os }}-buildozer-
