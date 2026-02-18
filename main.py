@@ -13,10 +13,10 @@ from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.camera import Camera
 from kivy.storage.jsonstore import JsonStore
-from kivy.graphics import Color, Ellipse, PushMatrix, PopMatrix, Rotate, Rectangle
+from kivy.uix.widget import Widget
+from kivy.graphics import Color, Rectangle, Ellipse, PushMatrix, PopMatrix, Rotate
 from kivy.metrics import dp
 from kivy.clock import Clock
-from kivy.uix.widget import Widget
 
 try:
     from android.permissions import check_permission, Permission
@@ -26,24 +26,13 @@ except:
 
 from kivy.utils import platform
 
-# ---------------- Sensor für Handywinkel ----------------
-if platform == "android":
-    from jnius import autoclass, PythonJavaClass, java_method
-    PythonActivity = autoclass("org.kivy.android.PythonActivity")
-    mActivity = PythonActivity.mActivity
-    SensorManager = autoclass("android.hardware.SensorManager")
-    Sensor = autoclass("android.hardware.Sensor")
-    Context = autoclass("android.content.Context")
-else:
-    SensorManager = Sensor = Context = None
-
 # ---------------- CompassScreen für A-Seite ----------------
 class CompassScreen(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Hintergrund
         with self.canvas.before:
-            Color(0, 0, 0.6, 1)  # Dunkelblau
+            Color(1, 1, 1, 1)  # weißer Hintergrund
             self.bg = Rectangle(size=self.size, pos=self.pos)
         self.bind(size=self.update_bg, pos=self.update_bg)
 
@@ -51,7 +40,7 @@ class CompassScreen(Widget):
         self.label = Label(
             text="NORD: 0°",
             font_size="40sp",
-            color=(1, 1, 1, 1),
+            color=(0, 0, 0, 1),
             center=self.center
         )
         self.add_widget(self.label)
@@ -65,7 +54,7 @@ class CompassScreen(Widget):
         self.label.center = self.center
 
     def update_direction(self, dt):
-        # 🔁 Simulation (ersetzt später Arduino-Wert)
+        # 🔁 Simulation (ersetzt später echten Wert)
         self.angle = (self.angle + 10) % 360
         direction = self.get_direction(self.angle)
         self.label.text = f"NORD: {self.angle}°\n{direction}"
@@ -94,7 +83,8 @@ class Dashboard(FloatLayout):
         self.topbar = BoxLayout(
             size_hint=(1, .08),
             spacing=5,
-            padding=5
+            padding=5,
+            pos_hint={"top": 1}
         )
         for t, f in [
             ("K", self.show_camera),
@@ -198,6 +188,39 @@ class Dashboard(FloatLayout):
         layout.add_widget(btns)
         self.add_widget(layout)
 
+    # ---------------- Galerie ----------------
+    def show_gallery(self, *args):
+        self.clear_widgets()
+        self.add_widget(self.topbar)
+        files = sorted([f for f in os.listdir(self.photos_dir) if f.endswith(".png")])
+        if not files:
+            self.add_widget(Label(
+                text="Es wurden noch keine Fotos gemacht",
+                font_size=24,
+                pos_hint={"center_x": .5, "center_y": .5}
+            ))
+            return
+        scroll = ScrollView()
+        grid = GridLayout(cols=2, spacing=10, padding=[10, 120, 10, 10], size_hint_y=None)
+        grid.bind(minimum_height=grid.setter("height"))
+
+        for file in files:
+            box = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(280), spacing=5)
+            img = Image(source=os.path.join(self.photos_dir, file), allow_stretch=True)
+            img.bind(on_touch_down=lambda inst, touch, f=file:
+                     self.open_image(f) if inst.collide_point(*touch.pos) else None)
+            name_label = Label(text=file.replace(".png", ""), size_hint_y=None, height=dp(25))
+            info_btn = Button(text="i", size_hint=(None, None), size=(dp(40), dp(40)))
+            info_btn.bind(on_press=lambda x, f=file: self.show_info(f))
+            name_box = BoxLayout(size_hint_y=None, height=dp(30))
+            name_box.add_widget(name_label)
+            name_box.add_widget(info_btn)
+            box.add_widget(img)
+            box.add_widget(name_box)
+            grid.add_widget(box)
+        scroll.add_widget(grid)
+        self.add_widget(scroll)
+
     # ---------------- A-Seite ----------------
     def show_a(self, *args):
         self.clear_widgets()
@@ -247,30 +270,7 @@ class Dashboard(FloatLayout):
         layout.add_widget(create_toggle_row("Automatisch speichern", "auto"))
         self.add_widget(layout)
 
-    # ---------------- Galerie & Hilfe ----------------
-    def show_gallery(self, *args):
-        self.clear_widgets()
-        self.add_widget(self.topbar)
-        files = sorted([f for f in os.listdir(self.photos_dir) if f.endswith(".png")])
-        if not files:
-            self.add_widget(Label(text="Es wurden noch keine Fotos gemacht", font_size=24,
-                                   pos_hint={"center_x": .5, "center_y": .5}))
-            return
-        scroll = ScrollView()
-        grid = GridLayout(cols=2, spacing=10, padding=[10, 120, 10, 10], size_hint_y=None)
-        grid.bind(minimum_height=grid.setter("height"))
-        for file in files:
-            box = BoxLayout(orientation="vertical", size_hint_y=None, height=dp(280), spacing=5)
-            img = Image(source=os.path.join(self.photos_dir, file), allow_stretch=True)
-            img.bind(on_touch_down=lambda inst, touch, f=file:
-                     self.open_image(f) if inst.collide_point(*touch.pos) else None)
-            name = Label(text=file.replace(".png", ""), size_hint_y=None, height=dp(25))
-            box.add_widget(img)
-            box.add_widget(name)
-            grid.add_widget(box)
-        scroll.add_widget(grid)
-        self.add_widget(scroll)
-
+    # ---------------- Hilfe ----------------
     def show_help(self, *args):
         self.clear_widgets()
         self.add_widget(self.topbar)
@@ -284,7 +284,6 @@ class Dashboard(FloatLayout):
 class MainApp(App):
     def build(self):
         return Dashboard()
-
 
 if __name__ == "__main__":
     MainApp().run()
