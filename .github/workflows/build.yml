@@ -1,4 +1,5 @@
-name: Build Kivy APK Schnell (Docker Final)
+
+name: Build Kivy APK Manuell
 
 on:
   push:
@@ -7,36 +8,78 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
-    container:
-      image: kivy/buildozer:latest
+    runs-on: ubuntu-22.04
+    
+    env:
+      PYTHONUNBUFFERED: '1'
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROIDSDK: ${{ github.workspace }}/android-sdk
 
     steps:
-      # 1️⃣ Code holen
       - name: Code auschecken
         uses: actions/checkout@v4
 
-      # 2️⃣ Cache für Buildozer & Gradle
-      - name: Cache Buildozer & Gradle
-        uses: actions/cache@v3
-        with:
-          path: |
-            /github/home/.buildozer
-            /github/home/.gradle
-          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            ${{ runner.os }}-buildozer-
-
-      # 3️⃣ APK bauen
-      - name: Build APK
+      # 1. Grundlegende Linux-Tools installieren
+      - name: Installiere System-Pakete
         run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git wget unzip zip libncurses5 libncursesw5 libtinfo5 libffi-dev libssl-dev python3-pip python3-venv util-linux autoconf libtool automake
+
+      # 2. Python Setup (3.9 ist sicherer, wir bleiben dabei)
+      - name: Setze Python 3.9
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # 3. Java Setup
+      - name: Setze Java 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 4. Buildozer & Cython installieren (HIER WAR DER FEHLER)
+      # Wir zwingen Cython auf eine Version VOR 3.0, um den "long"-Fehler zu beheben.
+      - name: Installiere Buildozer & Cython (Legacy Version)
+        run: |
+          pip install --upgrade pip
+          pip install buildozer "cython<3.0" 
+
+      # 5. Alte Caches löschen (Sicherheitsmaßnahme)
+      - name: Lösche alte Buildozer/P4A Caches
+        run: |
+          rm -rf .buildozer/android/platform/build-*
+          rm -rf .buildozer/android/platform/other_builds
+          rm -rf .buildozer/android/platform/build
+
+      # 6. Android Command Line Tools setup
+      - name: Download und Setup der Android Command Line Tools
+        run: |
+          mkdir -p $ANDROID_SDK_ROOT/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d $ANDROID_SDK_ROOT/cmdline-tools
+          mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest
+          rm cmdline-tools.zip
+
+      # 7. SDK Komponenten
+      - name: Installiere Android SDK Komponenten & Lizenzen
+        run: |
+          export PATH=$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          yes | sdkmanager --licenses --sdk_root=$ANDROID_SDK_ROOT
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT "platform-tools" "build-tools;34.0.0" "platforms;android-34" "platforms;android-33"
+
+      # 8. Der Build
+      - name: Build APK mit Buildozer
+        run: |
+          export ANDROIDSDK=$ANDROID_SDK_ROOT
+          export PATH=$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH
+          
+          # Starte den Build
           yes | buildozer android debug
 
-      # 4️⃣ APK als Artifact hochladen
-      - name: Upload APK Artifact
+      # 9. Upload
+      - name: APK als Artifact hochladen
         uses: actions/upload-artifact@v4
         with:
           name: Kivy-App-APK
           path: bin/*.apk
-          if-no-files-found: error
