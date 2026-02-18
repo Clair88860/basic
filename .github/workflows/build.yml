@@ -13,9 +13,11 @@ jobs:
       image: kivy/buildozer:latest
 
     steps:
+      # 1️⃣ Code holen
       - name: Code auschecken
         uses: actions/checkout@v4
 
+      # 2️⃣ Cache für Buildozer & Gradle
       - name: Cache Buildozer & Gradle
         uses: actions/cache@v3
         with:
@@ -26,12 +28,15 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildozer-
 
+      # 3️⃣ APK bauen
       - name: Build APK
         run: |
           yes | buildozer android debug
 
-      - name: Upload APK
+      # 4️⃣ APK als Artifact hochladen
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Kivy-App-APK
           path: bin/*.apk
+          if-no-files-found: error
