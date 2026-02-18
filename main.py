@@ -1,7 +1,9 @@
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.widget import Widget
 from kivy.uix.label import Label
 from kivy.clock import Clock
+from kivy.graphics import Color, Line, PushMatrix, PopMatrix, Rotate
 from kivy.utils import platform
 import math
 
@@ -36,10 +38,30 @@ def angle_to_direction(angle):
     else:
         return "Nordwest"
 
+# ---------------- Pfeil-Widget ----------------
+class CompassArrow(Widget):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.angle = 0
+        with self.canvas:
+            Color(1, 0, 0)
+            self.rot = Rotate()
+            self.rot.angle = 0
+            self.rot.origin = (self.center_x, self.center_y)
+            self.line = Line(points=[self.center_x, self.center_y, self.center_x, self.center_y+100], width=5)
+        self.bind(pos=self.update_origin, size=self.update_origin)
+
+    def update_origin(self, *args):
+        self.rot.origin = self.center
+        self.line.points = [self.center_x, self.center_y, self.center_x, self.center_y+100]
+
+    def set_angle(self, angle):
+        self.rot.angle = -angle  # Negativ für Kompass-Drehung
+        self.angle = angle
+
 # ---------------- Sensor Listener ----------------
 class OrientationListener(PythonJavaClass):
     __javainterfaces__ = ["android/hardware/SensorEventListener"]
-
     def __init__(self, app):
         super().__init__()
         self.app = app
@@ -50,7 +72,8 @@ class OrientationListener(PythonJavaClass):
         if len(rotation) >= 3:
             R = [0]*9
             SensorManager.getRotationMatrixFromVector(R, rotation)
-            orientation = SensorManager.getOrientation(R, [0.0,0.0,0.0])
+            orientation = [0.0,0.0,0.0]
+            SensorManager.getOrientation(R, orientation)
             azimut = math.degrees(orientation[0])
             if azimut < 0:
                 azimut += 360
@@ -63,27 +86,33 @@ class OrientationListener(PythonJavaClass):
 # ---------------- Main App ----------------
 class CompassApp(App):
     def build(self):
+        self.orientation = 0.0
+
         self.root = BoxLayout(orientation='vertical', padding=50)
-        self.direction_label = Label(text="Richtung: Nord", font_size=80)
-        self.angle_label = Label(text="0°", font_size=60)
+        self.direction_label = Label(text="Richtung: Nord", font_size=50, size_hint_y=0.2)
+        self.angle_label = Label(text="0°", font_size=40, size_hint_y=0.1)
+
+        self.arrow = CompassArrow(size_hint=(1,0.7))
+
         self.root.add_widget(self.direction_label)
         self.root.add_widget(self.angle_label)
-
-        self.orientation = 0.0
+        self.root.add_widget(self.arrow)
 
         if platform == "android":
             self.sensor_manager = mActivity.getSystemService(Context.SENSOR_SERVICE)
             self.rotation_sensor = self.sensor_manager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
             self.listener = OrientationListener(self)
-            self.sensor_manager.registerListener(self.listener,
-                                                 self.rotation_sensor,
-                                                 SensorManager.SENSOR_DELAY_UI)
-
-            Clock.schedule_interval(self.update_display, 0.2)
+            self.sensor_manager.registerListener(
+                self.listener,
+                self.rotation_sensor,
+                SensorManager.SENSOR_DELAY_UI
+            )
+            Clock.schedule_interval(self.update_display, 0.1)
 
         return self.root
 
     def update_display(self, dt):
+        self.arrow.set_angle(self.orientation)
         dir_str = angle_to_direction(self.orientation)
         self.direction_label.text = f"Richtung: {dir_str}"
         self.angle_label.text = f"{int(self.orientation)}°"
