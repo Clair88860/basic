@@ -13,6 +13,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.popup import Popup
 from kivy.uix.camera import Camera
+from kivy.uix.textinput import TextInput
 from kivy.storage.jsonstore import JsonStore
 from kivy.graphics import Color, Line, Ellipse, PushMatrix, PopMatrix, Rotate
 from kivy.metrics import dp
@@ -85,7 +86,7 @@ class Dashboard(FloatLayout):
     # Topbar
     # ======================================================
     def build_topbar(self):
-        self.topbar = BoxLayout(size_hint=(1, .08), pos_hint={"top":1})
+        self.topbar = BoxLayout(size_hint=(1, .08), pos_hint={"top":1}, spacing=2, padding=2)
 
         btn_k = Button(text="K")
         btn_g = Button(text="G")
@@ -110,7 +111,7 @@ class Dashboard(FloatLayout):
     def build_camera(self):
         self.camera = Camera(play=False, resolution=(1280, 720))
         self.camera.size_hint = (1, .9)
-        self.camera.pos_hint = {"center_x":.5, "center_y":.45}
+        self.camera.pos_hint = {"center_x":.5,"center_y":.45}
 
         with self.camera.canvas.before:
             PushMatrix()
@@ -190,7 +191,7 @@ class Dashboard(FloatLayout):
         if self.store.get("settings")["entzerrung"]:
             final_path = self.apply_perspective(temp_path)
 
-        # Vorschau mit Arduino Daten nur wenn aktiviert
+        # Vorschau
         self.show_preview(final_path, number)
 
     # ------------------------------------------------------
@@ -237,15 +238,25 @@ class Dashboard(FloatLayout):
         img = Image(source=path, allow_stretch=True)
         layout.add_widget(img)
 
+        auto=self.store.get("settings")["auto"]
+
+        if auto:
+            # automatisch speichern
+            final=os.path.join(self.photos_dir,number+".png")
+            os.rename(path,final)
+            if self.store.get("settings")["arduino"]:
+                self.store.put(number, angle=self.current_angle, timestamp=str(datetime.datetime.now()))
+            self.show_gallery()
+            return
+
         save_btn = Button(text="Speichern", size_hint=(.4,.1), pos_hint={"x":.05,"y":.02})
         retry_btn = Button(text="Wiederholen", size_hint=(.4,.1), pos_hint={"right":.95,"y":.02})
 
         def save(instance):
             final=os.path.join(self.photos_dir,number+".png")
             os.rename(path,final)
-            # Arduino Daten übernehmen, nur wenn aktiviert
             if self.store.get("settings")["arduino"]:
-                self.store.put(number, angle=self.current_angle)
+                self.store.put(number, angle=self.current_angle, timestamp=str(datetime.datetime.now()))
             self.show_gallery()
 
         def retry(instance):
@@ -295,7 +306,7 @@ class Dashboard(FloatLayout):
         self.add_widget(scroll)
 
     # ======================================================
-    # Einzelansicht
+    # Einzelansicht + i-Button + Löschen
     # ======================================================
     def show_single(self,filename):
         self.clear_widgets()
@@ -307,13 +318,28 @@ class Dashboard(FloatLayout):
         number=filename.replace(".png","")
 
         if self.store.exists(number) and self.store.get("settings")["arduino"]:
-            angle=self.store.get(number)["angle"]
+            data=self.store.get(number)
+            angle=data.get("angle",0)
+            timestamp=data.get("timestamp","")
             overlay = Label(text=f"NORD: {int(angle)}°", pos_hint={"right":.98,"top":.95})
             layout.add_widget(overlay)
 
             info_btn=Button(text="i",size_hint=(None,None),size=(50,50),pos_hint={"x":.02,"top":.95})
             def show_info(instance):
-                popup=Popup(title="Info",content=Label(text=f"Winkel: {int(angle)}°"), size_hint=(.6,.4))
+                box = BoxLayout(orientation="vertical", spacing=5)
+                box.add_widget(Label(text=f"Name: {number}"))
+                box.add_widget(Label(text=f"Datum: {timestamp}"))
+                box.add_widget(Label(text=f"Winkel: {int(angle)}°"))
+
+                delete_btn = Button(text="Foto löschen")
+                def delete(instance):
+                    os.remove(path)
+                    self.show_gallery()
+                    popup.dismiss()
+                delete_btn.bind(on_press=delete)
+                box.add_widget(delete_btn)
+
+                popup = Popup(title="Info", content=box, size_hint=(0.8,0.7))
                 popup.open()
             info_btn.bind(on_press=show_info)
             layout.add_widget(info_btn)
