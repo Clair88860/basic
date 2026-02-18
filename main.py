@@ -2,191 +2,92 @@ from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
-from kivy.uix.scrollview import ScrollView
+from kivy.uix.slider import Slider
 from kivy.clock import Clock
 from kivy.utils import platform
 import struct
 
-# ---------------- UUIDs ----------------
-SERVICE_UUID = "12345678-1234-1234-1234-1234567890ab"
-CHAR_UUID    = "12345678-1234-1234-1234-1234567890ac"
-CCCD_UUID    = "00002902-0000-1000-8000-00805f9b34fb"
+# Dummy-Winkel, falls kein Arduino
+dummy_angle = 0.0
 
-# ---------------- Android Imports ----------------
-if platform == "android":
-    from jnius import autoclass, PythonJavaClass, java_method
-    
-    BluetoothAdapter = autoclass("android.bluetooth.BluetoothAdapter")
-    BluetoothLeScanner = autoclass("android.bluetooth.le.BluetoothLeScanner")
-    BluetoothGattDescriptor = autoclass("android.bluetooth.BluetoothGattDescriptor")
-    UUID = autoclass("java.util.UUID")
-    PythonActivity = autoclass("org.kivy.android.PythonActivity")
-    mActivity = PythonActivity.mActivity
-else:
-    class PythonJavaClass: pass
-    def java_method(sig): return lambda x: x
+# Funktion, um Winkel in Richtung umzuwandeln
+def direction_from_angle(angle):
+    if angle >= 337.5 or angle < 22.5:
+        return "Nord"
+    elif angle < 67.5:
+        return "Nordost"
+    elif angle < 112.5:
+        return "Ost"
+    elif angle < 157.5:
+        return "Südost"
+    elif angle < 202.5:
+        return "Süd"
+    elif angle < 247.5:
+        return "Südwest"
+    elif angle < 292.5:
+        return "West"
+    else:
+        return "Nordwest"
 
-
-# =====================================================
-# ===================== APP ===========================
-# =====================================================
-
-class BLEApp(App):
-
+# -------------------- APP --------------------
+class BLEFallbackApp(App):
     def build(self):
-        layout = BoxLayout(orientation="vertical", padding=20, spacing=10)
+        self.root = BoxLayout(orientation='vertical', padding=20, spacing=10)
 
-        self.angle_label = Label(text="0.0°", font_size=80)
-        self.button = Button(text="Scan starten", size_hint_y=0.2)
-        self.button.bind(on_press=self.start_scan)
+        # Labels
+        self.angle_label = Label(text="Winkel: 0°", font_size=50)
+        self.direction_label = Label(text="Richtung: Nord", font_size=50)
 
-        self.log_label = Label(text="Bereit\n", size_hint_y=None)
-        self.log_label.bind(texture_size=self.log_label.setter("size"))
+        # Slider für manuellen Dummy-Winkel
+        self.slider = Slider(min=0, max=360, value=0)
+        self.slider.bind(value=self.on_slider_change)
 
-        scroll = ScrollView()
-        scroll.add_widget(self.log_label)
+        # Button: Simuliert BLE Scan/Verbindung (nur Dummy)
+        self.button = Button(text="Scan starten (Dummy BLE)", size_hint_y=0.2)
+        self.button.bind(on_press=self.on_scan_dummy)
 
-        layout.add_widget(self.angle_label)
-        layout.add_widget(self.button)
-        layout.add_widget(scroll)
+        # Hinzufügen
+        self.root.add_widget(self.angle_label)
+        self.root.add_widget(self.direction_label)
+        self.root.add_widget(self.slider)
+        self.root.add_widget(self.button)
 
-        # BLE Referenzen
-        self.gatt = None
-        self.scan_callback = None
-        self.gatt_callback = None
-        self.scanner = None
+        # BLE Platzhalter
+        self.ble_connected = False
+        self.ble_angle = None  # Wenn Arduino Daten sendet
 
-        return layout
+        # Timer für Dummy-Werte
+        Clock.schedule_interval(self.update_display, 0.2)
 
-    # -------------------------------------------------
+        return self.root
+
+    # ----------------- Slider Callback -----------------
+    def on_slider_change(self, instance, value):
+        global dummy_angle
+        dummy_angle = value
+
+    # ----------------- Dummy Scan -----------------
+    def on_scan_dummy(self, instance):
+        self.ble_connected = True
+        self.ble_angle = None  # Anfang: kein Wert vom Arduino
+        self.log("BLE Scan gestartet (Dummy)")
+
     def log(self, msg):
-        Clock.schedule_once(lambda dt:
-            setattr(self.log_label, "text", self.log_label.text + msg + "\n"))
+        print(msg)
 
-    # -------------------------------------------------
-    def on_start(self):
-        if platform == "android":
-            from android.permissions import request_permissions, Permission
+    # ----------------- Display Update -----------------
+    def update_display(self, dt):
+        # Wenn BLE-Wert da, benutze ihn, sonst Dummy
+        angle = self.ble_angle if self.ble_angle is not None else dummy_angle
 
-            request_permissions([
-                Permission.ACCESS_FINE_LOCATION,
-                Permission.BLUETOOTH_SCAN,
-                Permission.BLUETOOTH_CONNECT
-            ])
+        self.angle_label.text = f"Winkel: {angle:.1f}°"
+        self.direction_label.text = f"Richtung: {direction_from_angle(angle)}"
 
-    # -------------------------------------------------
-    def start_scan(self, *args):
-        if platform != "android":
-            self.log("Nur Android unterstützt")
-            return
-
-        adapter = BluetoothAdapter.getDefaultAdapter()
-        if not adapter or not adapter.isEnabled():
-            self.log("Bluetooth nicht aktiviert!")
-            return
-
-        self.log("Scanne...")
-        self.button.text = "Suche..."
-
-        self.scanner = adapter.getBluetoothLeScanner()
-        self.scan_callback = self.ScanCallback(self)
-        self.scanner.startScan(self.scan_callback)
-
-    # =====================================================
-    # =================== SCAN CALLBACK ===================
-    # =====================================================
-
-    class ScanCallback(PythonJavaClass):
-        __javainterfaces__ = ["android/bluetooth/le/ScanCallback"]
-
-        def __init__(self, app):
-            super().__init__()
-            self.app = app
-
-        @java_method("(ILandroid/bluetooth/le/ScanResult;)V")
-        def onScanResult(self, callbackType, result):
-            device = result.getDevice()
-            name = device.getName()
-
-            if name and "Arduino_GCS" in name:
-                self.app.log(f"Arduino gefunden: {name}")
-                # Scanner stoppen
-                if self.app.scanner:
-                    self.app.scanner.stopScan(self)
-                self.app.connect(device)
-
-    # -------------------------------------------------
-    def connect(self, device):
-        self.log("Verbinde...")
-        self.gatt_callback = self.GattCallback(self)
-        self.gatt = device.connectGatt(
-            mActivity,
-            False,
-            self.gatt_callback,
-            2  # TRANSPORT_LE
-        )
-
-    # =====================================================
-    # =================== GATT CALLBACK ===================
-    # =====================================================
-
-    class GattCallback(PythonJavaClass):
-        __javainterfaces__ = ["android/bluetooth/BluetoothGattCallback"]
-
-        def __init__(self, app):
-            super().__init__()
-            self.app = app
-
-        @java_method("(Landroid/bluetooth/BluetoothGatt;II)V")
-        def onConnectionStateChange(self, gatt, status, newState):
-            if newState == 2:  # STATE_CONNECTED
-                self.app.log("Verbunden!")
-                gatt.discoverServices()
-            elif newState == 0:  # STATE_DISCONNECTED
-                self.app.log("Getrennt")
-
-        @java_method("(Landroid/bluetooth/BluetoothGatt;I)V")
-        def onServicesDiscovered(self, gatt, status):
-            services = gatt.getServices()
-            for i in range(services.size()):
-                s = services.get(i)
-                self.app.log("Service: " + s.getUuid().toString())
-
-            service = gatt.getService(UUID.fromString(SERVICE_UUID))
-            if not service:
-                self.app.log("Service nicht gefunden!")
-                return
-
-            characteristic = service.getCharacteristic(UUID.fromString(CHAR_UUID))
-            if not characteristic:
-                self.app.log("Characteristic nicht gefunden!")
-                return
-
-            gatt.setCharacteristicNotification(characteristic, True)
-            descriptor = characteristic.getDescriptor(UUID.fromString(CCCD_UUID))
-            descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-            gatt.writeDescriptor(descriptor)
-
-            self.app.log("Notifications aktiviert!")
-
-        @java_method("(Landroid/bluetooth/BluetoothGatt;Landroid/bluetooth/BluetoothGattCharacteristic;)V")
-        def onCharacteristicChanged(self, gatt, characteristic):
-            data = characteristic.getValue()
-            if not data:
-                return
-            try:
-                value = struct.unpack('<f', bytes(data))[0]
-                Clock.schedule_once(lambda dt:
-                    setattr(self.app.angle_label, "text", f"{value:.1f}°"))
-            except Exception as e:
-                self.app.log("Fehler: " + str(e))
-
-    # -------------------------------------------------
-    def on_stop(self):
-        if self.gatt:
-            self.gatt.close()
+    # ----------------- BLE Dummy Funktion -----------------
+    def receive_ble_data(self, angle_value):
+        """Simuliert den Eingang von Arduino-Daten"""
+        self.ble_angle = angle_value
 
 
-# =====================================================
 if __name__ == "__main__":
-    BLEApp().run()
+    BLEFallbackApp().run()
