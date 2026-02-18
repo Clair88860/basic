@@ -8,7 +8,7 @@ requirements = python3,kivy,pyjnius
 orientation = portrait
 source.dir = .
 
-android.permissions = BLUETOOTH,BLUETOOTH_ADMIN,ACCESS_FINE_LOCATION,BLUETOOTH_CONNECT,BLUETOOTH_SCAN
+android.permissions = CAMERA, BLUETOOTH,BLUETOOTH_ADMIN,ACCESS_FINE_LOCATION,BLUETOOTH_CONNECT,BLUETOOTH_SCAN
 android.api = 33
 android.minapi = 31
 android.sdk = 33
