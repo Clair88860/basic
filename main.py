@@ -1,5 +1,6 @@
 import os
 import datetime
+import math
 from kivy.app import App
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.boxlayout import BoxLayout
@@ -12,10 +13,10 @@ from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.camera import Camera
 from kivy.storage.jsonstore import JsonStore
-from kivy.graphics import Color, Ellipse, PushMatrix, PopMatrix, Rotate
+from kivy.graphics import Color, Ellipse, PushMatrix, PopMatrix, Rotate, Rectangle
 from kivy.metrics import dp
 from kivy.clock import Clock
-import math
+from kivy.uix.widget import Widget
 
 try:
     from android.permissions import check_permission, Permission
@@ -36,48 +37,42 @@ if platform == "android":
 else:
     SensorManager = Sensor = Context = None
 
-def angle_to_direction(angle):
-    angle = angle % 360
-    if angle >= 337.5 or angle < 22.5:
-        return "Nord"
-    elif angle < 67.5:
-        return "Nordost"
-    elif angle < 112.5:
-        return "Ost"
-    elif angle < 157.5:
-        return "Südost"
-    elif angle < 202.5:
-        return "Süd"
-    elif angle < 247.5:
-        return "Südwest"
-    elif angle < 292.5:
-        return "West"
-    else:
-        return "Nordwest"
+# ---------------- CompassScreen für A-Seite ----------------
+class CompassScreen(Widget):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Hintergrund
+        with self.canvas.before:
+            Color(0, 0, 0.6, 1)  # Dunkelblau
+            self.bg = Rectangle(size=self.size, pos=self.pos)
+        self.bind(size=self.update_bg, pos=self.update_bg)
 
-class OrientationListener(PythonJavaClass):
-    __javainterfaces__ = ["android/hardware/SensorEventListener"]
+        # Anzeige
+        self.label = Label(
+            text="NORD: 0°",
+            font_size="40sp",
+            color=(1, 1, 1, 1),
+            center=self.center
+        )
+        self.add_widget(self.label)
 
-    def __init__(self, app):
-        super().__init__()
-        self.app = app
+        self.angle = 0
+        Clock.schedule_interval(self.update_direction, 0.5)
 
-    @java_method("(Landroid/hardware/SensorEvent;)V")
-    def onSensorChanged(self, event):
-        rotation = event.values
-        if len(rotation) >= 3:
-            R = [0] * 9
-            SensorManager.getRotationMatrixFromVector(R, rotation)
-            orientation = [0.0, 0.0, 0.0]
-            SensorManager.getOrientation(R, orientation)
-            azimut = math.degrees(orientation[0])
-            if azimut < 0:
-                azimut += 360
-            self.app.orientation = azimut
+    def update_bg(self, *args):
+        self.bg.size = self.size
+        self.bg.pos = self.pos
+        self.label.center = self.center
 
-    @java_method("(Landroid/hardware/Sensor;I)V")
-    def onAccuracyChanged(self, sensor, accuracy):
-        pass
+    def update_direction(self, dt):
+        # 🔁 Simulation (ersetzt später Arduino-Wert)
+        self.angle = (self.angle + 10) % 360
+        direction = self.get_direction(self.angle)
+        self.label.text = f"NORD: {self.angle}°\n{direction}"
+
+    def get_direction(self, angle):
+        dirs = ["N", "NO", "O", "SO", "S", "SW", "W", "NW"]
+        return dirs[int((angle + 22.5) / 45) % 8]
 
 # ---------------- Dashboard ----------------
 class Dashboard(FloatLayout):
@@ -89,20 +84,9 @@ class Dashboard(FloatLayout):
         self.photos_dir = os.path.join(app.user_data_dir, "photos")
         os.makedirs(self.photos_dir, exist_ok=True)
 
-        self.orientation = 0.0
-        if platform == "android":
-            self.sensor_manager = mActivity.getSystemService(Context.SENSOR_SERVICE)
-            self.rotation_sensor = self.sensor_manager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
-            self.listener = OrientationListener(self)
-            self.sensor_manager.registerListener(
-                self.listener, self.rotation_sensor, SensorManager.SENSOR_DELAY_UI
-            )
-            Clock.schedule_interval(self.update_orientation_text, 1.0)
-
         self.build_topbar()
         self.build_camera()
         self.build_capture_button()
-
         Clock.schedule_once(lambda dt: self.show_camera(), 0.2)
 
     # ---------------- Topbar ----------------
@@ -184,7 +168,6 @@ class Dashboard(FloatLayout):
         number = self.get_next_number()
         path = os.path.join(self.photos_dir, number + ".png")
         self.camera.export_to_png(path)
-
         self.arduino_on = self.store.get("arduino")["value"] if self.store.exists("arduino") else False
         if not (self.store.get("auto")["value"] if self.store.exists("auto") else False):
             self.show_preview(path)
@@ -192,12 +175,10 @@ class Dashboard(FloatLayout):
     def show_preview(self, path):
         self.clear_widgets()
         self.add_widget(self.topbar)
-
         layout = BoxLayout(orientation="vertical")
         img = Image(source=path, allow_stretch=True)
         img_layout = FloatLayout()
         img_layout.add_widget(img)
-
         if self.arduino_on:
             overlay_label = Label(
                 text="Norden",
@@ -206,7 +187,6 @@ class Dashboard(FloatLayout):
                 pos_hint={"top": 0.95, "center_x": 0.5}
             )
             img_layout.add_widget(overlay_label)
-
         layout.add_widget(img_layout)
         btns = BoxLayout(size_hint_y=0.2)
         save = Button(text="Speichern")
@@ -218,99 +198,20 @@ class Dashboard(FloatLayout):
         layout.add_widget(btns)
         self.add_widget(layout)
 
-    def open_image(self, filename):
-        self.clear_widgets()
-        self.add_widget(self.topbar)
-        layout = BoxLayout(orientation="vertical")
-        img_layout = FloatLayout(size_hint_y=0.85)
-        path = os.path.join(self.photos_dir, filename)
-        img = Image(source=path, allow_stretch=True)
-        img_layout.add_widget(img)
-
-        arduino_on = self.store.get("arduino")["value"] if self.store.exists("arduino") else False
-        if arduino_on:
-            overlay_label = Label(
-                text="Norden",
-                font_size=40,
-                color=(1, 0, 0, 1),
-                pos_hint={"top": 0.95, "center_x": 0.5}
-            )
-            img_layout.add_widget(overlay_label)
-
-        layout.add_widget(img_layout)
-        bottom = BoxLayout(orientation="vertical", size_hint_y=0.15, spacing=5)
-        name_lbl = Label(text=filename.replace(".png", ""), size_hint_y=None, height=dp(25))
-        info_btn = Button(text="i", size_hint=(None, None), size=(dp(40), dp(40)))
-        info_btn.bind(on_press=lambda x: self.show_info(filename))
-        row = BoxLayout()
-        row.add_widget(name_lbl)
-        row.add_widget(info_btn)
-        bottom.add_widget(row)
-        layout.add_widget(bottom)
-        self.add_widget(layout)
-
-    def show_info(self, filename):
-        path = os.path.join(self.photos_dir, filename)
-        box = BoxLayout(orientation="vertical", spacing=10, padding=10)
-        name_input = TextInput(text=filename.replace(".png", ""), multiline=False)
-        box.add_widget(Label(text="Name ändern:"))
-        box.add_widget(name_input)
-        timestamp = datetime.datetime.fromtimestamp(os.path.getmtime(path))
-        box.add_widget(Label(text=f"Datum/Uhrzeit:\n{timestamp}"))
-
-        arduino_on = self.store.get("arduino")["value"] if self.store.exists("arduino") else False
-        if arduino_on:
-            box.add_widget(Label(text="Norden", color=(1, 0, 0, 1), font_size=20))
-
-        save_btn = Button(text="Speichern")
-        save_btn.bind(on_press=lambda x: self.rename_file(filename, name_input.text))
-        box.add_widget(save_btn)
-        delete_btn = Button(text="Foto löschen")
-        delete_btn.bind(on_press=lambda x: self.delete_file_safe(filename))
-        box.add_widget(delete_btn)
-        popup = Popup(title=filename.replace(".png", ""),
-                      content=box,
-                      size_hint=(0.8, 0.7))
-        popup.open()
-
-    def delete_file_safe(self, filename):
-        try:
-            path = os.path.join(self.photos_dir, filename)
-            os.remove(path)
-        except Exception as e:
-            print("Fehler beim Löschen:", e)
-        finally:
-            self.show_gallery()
-
-    def rename_file(self, old_name, new_name):
-        old_path = os.path.join(self.photos_dir, old_name)
-        new_path = os.path.join(self.photos_dir, f"{new_name}.png")
-        os.rename(old_path, new_path)
-        self.show_gallery()
-
     # ---------------- A-Seite ----------------
     def show_a(self, *args):
         self.clear_widgets()
         self.add_widget(self.topbar)
-        self.arduino_on = self.store.get("arduino")["value"] if self.store.exists("arduino") else False
-
-        if self.arduino_on:
-            self.angle_label = Label(
-                text=f"Handywinkel: {int(self.orientation)}°",
-                font_size=40,
-                pos_hint={"center_x": .5, "center_y": .5}
-            )
-            self.add_widget(self.angle_label)
+        arduino_on = self.store.get("arduino")["value"] if self.store.exists("arduino") else False
+        if arduino_on:
+            compass = CompassScreen()
+            self.add_widget(compass)
         else:
             self.add_widget(Label(
                 text="Sie müssen die Daten erst in den Einstellungen aktivieren",
                 font_size=24,
                 pos_hint={"center_x": .5, "center_y": .5}
             ))
-
-    def update_orientation_text(self, dt):
-        if hasattr(self, "angle_label") and self.arduino_on:
-            self.angle_label.text = f"Handywinkel: {int(self.orientation)}°"
 
     # ---------------- Settings ----------------
     def show_settings(self, *args):
@@ -379,11 +280,7 @@ class Dashboard(FloatLayout):
             pos_hint={"center_x": .5, "center_y": .5}
         ))
 
-    def on_stop(self):
-        if platform == "android" and hasattr(self, "sensor_manager"):
-            self.sensor_manager.unregisterListener(self.listener)
-
-
+# ---------------- Main ----------------
 class MainApp(App):
     def build(self):
         return Dashboard()
