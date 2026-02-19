@@ -89,7 +89,8 @@ class Dashboard(FloatLayout):
     def build_topbar(self):
         self.topbar = BoxLayout(size_hint=(1, .08), pos_hint={"top":1}, spacing=2, padding=2)
 
-        btn_k = Button(text="K")
+        btn_k = Button(background_normal="camera_icon.png", background_down="camera_icon.png",text="",size_hint=(None, None),size=(50, 50))
+
         btn_g = Button(text="G")
         btn_e = Button(text="E")
         
