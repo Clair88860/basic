@@ -1,3 +1,4 @@
+
 import os
 import cv2
 import numpy as np
@@ -91,16 +92,16 @@ class Dashboard(FloatLayout):
         btn_k = Button(text="K")
         btn_g = Button(text="G")
         btn_e = Button(text="E")
-        btn_a = Button(text="A")
-        btn_h = Button(text="H")
+        
+        btn_h = Button(text="?")
 
         btn_k.bind(on_press=self.show_camera)
         btn_g.bind(on_press=self.show_gallery)
         btn_e.bind(on_press=self.show_settings)
-        btn_a.bind(on_press=self.show_a)
+        
         btn_h.bind(on_press=self.show_help)
 
-        for btn in [btn_k, btn_g, btn_e, btn_a, btn_h]:
+        for btn in [btn_k, btn_g, btn_e, btn_h]:
             self.topbar.add_widget(btn)
 
         self.add_widget(self.topbar)
@@ -144,6 +145,7 @@ class Dashboard(FloatLayout):
     # Kamera anzeigen
     # ======================================================
     def show_camera(self,*args):
+        self.remove_overlay()   # <- wichtig
         self.clear_widgets()
         self.add_widget(self.topbar)
 
@@ -151,9 +153,9 @@ class Dashboard(FloatLayout):
         self.add_widget(self.camera)
         self.add_widget(self.capture)
 
-        # Overlay nur auf K-Seite und wenn Entzerrung aktiviert
         if self.store.get("settings")["entzerrung"]:
             self.init_overlay()
+
 
     # ======================================================
     # Overlay Rahmen (nur auf K-Seite)
@@ -190,6 +192,23 @@ class Dashboard(FloatLayout):
         for i in [0,1,2,3,0]:
             pts.extend([self.corners[i].center_x, self.corners[i].center_y])
         self.line.points=pts
+
+
+        # ======================================================
+    # Overlay komplett entfernen
+    # ======================================================
+    def remove_overlay(self):
+        if hasattr(self, "corners"):
+            for c in self.corners:
+                if c.parent:
+                    self.remove_widget(c)
+            self.corners = []
+
+        if hasattr(self, "line"):
+            try:
+                self.canvas.remove(self.line)
+            except:
+                pass
 
     # ======================================================
     # Foto aufnehmen
@@ -245,6 +264,8 @@ class Dashboard(FloatLayout):
     # Vorschau
     # ======================================================
     def show_preview(self,path,number):
+        self.remove_overlay()
+
         self.clear_widgets()
         self.add_widget(self.topbar)
         layout = FloatLayout()
@@ -290,6 +311,7 @@ class Dashboard(FloatLayout):
     # Galerie
     # ======================================================
     def show_gallery(self,*args):
+        self.remove_overlay()
         self.clear_widgets()
         self.add_widget(self.topbar)
 
@@ -320,6 +342,8 @@ class Dashboard(FloatLayout):
     # Einzelansicht + i-Button + Löschen
     # ======================================================
     def show_single(self,filename):
+        self.remove_overlay()
+
         self.clear_widgets()
         self.add_widget(self.topbar)
         layout=FloatLayout()
@@ -360,17 +384,12 @@ class Dashboard(FloatLayout):
     # ======================================================
     # A-Seite
     # ======================================================
-    def show_a(self,*args):
-        self.clear_widgets()
-        self.add_widget(self.topbar)
-        arduino=self.store.get("settings")["arduino"]
-        text="Hier werden Arduino Daten angezeigt" if arduino else "Daten in Einstellungen aktivieren"
-        self.add_widget(Label(text=text, font_size=24,pos_hint={"center_x":.5,"center_y":.5}))
-
+    
     # ======================================================
     # H-Seite
     # ======================================================
     def show_help(self,*args):
+        self.remove_overlay()
         self.clear_widgets()
         self.add_widget(self.topbar)
         self.add_widget(Label(text="Bei Fragen oder Problemen:\nE-Mail", font_size=20,pos_hint={"center_x":.5,"center_y":.5}))
@@ -379,6 +398,8 @@ class Dashboard(FloatLayout):
     # Einstellungen
     # ======================================================
     def show_settings(self,*args):
+        self.remove_overlay()
+
         self.clear_widgets()
         self.add_widget(self.topbar)
         layout=BoxLayout(orientation="vertical", padding=[20,120,20,20], spacing=20)
