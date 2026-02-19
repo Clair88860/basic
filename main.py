@@ -111,8 +111,8 @@ class Dashboard(FloatLayout):
     # ======================================================
     def build_camera(self):
         self.camera = Camera(play=False, resolution=(1280, 720))
-        self.camera.size_hint = (1, .9)
-        self.camera.pos_hint = {"center_x":.5,"center_y":.45}
+        self.camera.size_hint = (1, .92)
+        self.camera.pos_hint = {"top":.92}
 
         with self.camera.canvas.before:
             PushMatrix()
