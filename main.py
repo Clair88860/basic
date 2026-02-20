@@ -227,16 +227,36 @@ class Dashboard(FloatLayout):
     # Foto aufnehmen
     # ======================================================
     def take_photo(self, instance):
-        number = f"{len([f for f in os.listdir(self.photos_dir) if f.endswith('.png')])+1:04d}"
-        temp_path = os.path.join(self.photos_dir,"temp.png")
+
+        # Nur Hauptnummern zählen (ohne _I)
+        existing = [f for f in os.listdir(self.photos_dir)
+                    if f.endswith(".png") and "_I" not in f]
+
+        number = f"{len(existing)+1:04d}"
+
+        # Temporär speichern
+        temp_path = os.path.join(self.photos_dir, "temp.png")
         self.camera.export_to_png(temp_path)
-        final_path = temp_path
 
-        # Entzerrung
-        final_path = self.apply_perspective(temp_path)
+        # Entzerren
+        warped_path = self.apply_perspective(temp_path)
 
-        # Vorschau
-        self.show_preview(final_path, number)
+        # Zielnamen
+        final_main = os.path.join(self.photos_dir, number + ".png")
+        final_i = os.path.join(self.photos_dir, number + "_I.png")
+
+        # Entzerrtes Bild zweimal speichern
+        import shutil
+        shutil.copy(warped_path, final_main)
+        shutil.copy(warped_path, final_i)
+
+        # Temp löschen
+        os.remove(temp_path)
+        os.remove(warped_path)
+
+        # Vorschau vom Hauptbild
+        self.show_preview(final_main, number)
+
 
     # ======================================================
     # Perspektivische Transformation
