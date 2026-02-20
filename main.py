@@ -106,8 +106,13 @@ class Dashboard(FloatLayout):
             size=(150, 150)
         )
 
-        
-        btn_h = Button(text="?")
+        btn_h = Button(
+            background_normal="question_icon.png",
+            background_down="question_icon.png",
+            text="",
+            size_hint=(None, None),
+            size=(150, 150)
+        )
 
         btn_k.bind(on_press=self.show_camera)
         btn_g.bind(on_press=self.show_gallery)
